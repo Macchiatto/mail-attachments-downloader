@@ -7,13 +7,7 @@ import time
 from datetime import datetime
 from email._parseaddr import parsedate_tz
 import util
-from Preprocess import main as predo
-import const
-
-__author__ = "Aiden"
-__date__ = "2016-12-28"
-__copyright__ = "Copyright 2016, wochacha"
-__version__ = "1.1.2"
+import conf
 
 
 class Email(object):
@@ -21,10 +15,11 @@ class Email(object):
     # email configuration
     def __init__(self):
         self.dateDir = datetime.now().strftime("%Y%m%d")
-        self.host = const.EMAIL_CONF['host']
-        self.port = const.EMAIL_CONF['port']
-        self.user_id = const.EMAIL_CONF['user']
-        self.pwd = const.EMAIL_CONF['password']
+        self.host = conf.EMAIL_CONF['host']
+        self.port = conf.EMAIL_CONF['port']
+        self.user_id = conf.EMAIL_CONF['user']
+        self.pwd = conf.EMAIL_CONF['password']
+        self.uild_file = conf.UIDL_FILE
         self.uidl = ''
         self.mail_id = ''
         self.send_date = ''
@@ -44,9 +39,9 @@ class Email(object):
         (mail_count, size) = mail_server.stat()
         print("MailNum: {0}  Size: {1}MB".format(
             mail_count, round(size / 1024 / 1024)))
-        results = util.mysql_execute("select uidl from tesla_email")
-        # get local uidl list
-        loc_uidl = [loc_one[0] for loc_one in results]
+        with open self.uidl_file as fo: 
+            # get local uidl list
+            loc_uidl = fo.readlines()
         # Get a unique identification of an email
         # construct a list that contains ready-to-download id
         serv_uidl_dic = {serv_one.decode().split(
@@ -58,21 +53,31 @@ class Email(object):
             exit(0)
         # Loop email sequence
         for uidl in new_uidl:
-            self.mail_id = serv_uidl_dic[uidl]
-            print('Now downloading the email No.{}'.format(self.mail_id))
-            self.parse_email(mail_server, uidl)
-            print("=================================")
-            # log out from mail server
+            try:
+                self.mail_id = serv_uidl_dic[uidl]
+                print('Now downloading the email No.{}'.format(self.mail_id))
+                self.parse_content(mail_server, uidl)
+                print("=================================")
+            except:
+                print("some errors occur exit!")
+                mail_server.quit()
+                exit(-1)
+            else:
+                with open(self.uidl_file, 'a+') as fo:
+                    fo.write(uidl + '\n')
+
+        # log out from mail server
         mail_server.quit()
 
 
-    def parse_email(self, mail_conn, uidl):
+    def parse_content(self, mail_conn, uidl):
         """parse email content"""
         messages = mail_conn.retr(self.mail_id)[1]
         content = email.message_from_bytes(
             '\n'.encode('utf-8').join(messages))
         subject = email.header.decode_header(content.get('subject'))
-        mail_from = email.utils.parseaddr(content.get("from"))[1]
+        mail_from = email.
+        s.parseaddr(content.get("from"))[1]
         print("From:", mail_from)
         raw_date_time = parsedate_tz(content.get('date'))
         # (y, month, d, h, min, sec, _, _, _, tzoffset) = parsedate_tz(content.get('date'))
@@ -83,12 +88,9 @@ class Email(object):
         self.send_date = time.strftime("%Y%m%d", raw_date_time[:-1])
         sub = self.decode_str(subject[0][0])
         print("Subject:", sub)
-        # Insert new email-info into the table: tesla_email
-        util.mysql_execute("""INSERT INTO tesla_email(
-            uidl, sequence, subject, mail_from, send_date) values(
-                '{}', {}, '{}', '{}', '{}') """.format(
-                    uidl, self.mail_id, sub, mail_from, self.send_datetime))
         self.download_files(content)
+
+
 
 
     def download_files(self, mail):
@@ -106,7 +108,7 @@ class Email(object):
                     # If not exist, create it
                     if not os.path.exists(filepath):
                         os.makedirs(filepath)
-                    filename = self.set_filename(filepath, filename)
+                    filename = self.rename(filepath, filename)
                     full_path = os.path.join(filepath, filename)
                     # save file
                     with open(full_path, 'wb') as fo:
@@ -130,8 +132,8 @@ class Email(object):
 
 
     @staticmethod
-    def set_filename(filepath, filename, n=1):
-        """ dddd"""
+    def rename(filepath, filename, n=1):
+        """ rename file"""
         while os.path.exists(os.path.join(filepath, filename)):
             filename = "{}({}).{}".format(
                 os.path.splitext(filename)[0], str(n), os.path.splitext(filename)[1])
@@ -159,6 +161,3 @@ class Email(object):
 if __name__ == '__main__':
     OBJ_GET_EMAIL = Email()
     OBJ_GET_EMAIL.main()
-
-    # mailServer.dele(i)
-    # mailServer.quit()
